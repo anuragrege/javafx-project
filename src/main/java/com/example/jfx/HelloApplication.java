@@ -12,28 +12,35 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 public class HelloApplication extends Application {
 
-    private Scene homeScene, loginScene, createAccountScene;
-    private Map<String, String> userDatabase = new HashMap<>();
+    private Scene homeScene, loginScene, createAccountScene, deleteAccountScene;
+    private Connection connection;
 
     @Override
     public void start(Stage primaryStage) {
+        setupDatabase();
+
         primaryStage.setTitle("Welcome to the System");
 
         // Home Scene
         Label welcomeLabel = new Label("Welcome to the System");
         Button loginButton = new Button("Login");
         Button createAccountButton = new Button("Create Account");
+        Button deleteAccountButton = new Button("Delete Account");
 
         loginButton.setOnAction(e -> primaryStage.setScene(loginScene));
         createAccountButton.setOnAction(e -> primaryStage.setScene(createAccountScene));
+        deleteAccountButton.setOnAction(e -> primaryStage.setScene(deleteAccountScene));
 
         VBox homeLayout = new VBox(10);
-        homeLayout.getChildren().addAll(welcomeLabel, loginButton, createAccountButton);
+        homeLayout.getChildren().addAll(welcomeLabel, loginButton, createAccountButton, deleteAccountButton);
         homeScene = new Scene(homeLayout, 300, 200);
 
         // Login Scene
@@ -105,20 +112,91 @@ public class HelloApplication extends Application {
         createAccountLayout.add(backButton2, 0, 4);
         createAccountScene = new Scene(createAccountLayout, 300, 200);
 
+        // Delete Account Scene
+        GridPane deleteAccountLayout = new GridPane();
+        deleteAccountLayout.setVgap(10);
+        deleteAccountLayout.setHgap(10);
+        Label deleteAccountLabel = new Label("Delete Account");
+        Label deleteUsernameLabel = new Label("Username:");
+        Label deletePasswordLabel = new Label("Password:");
+        TextField deleteUsernameField = new TextField();
+        PasswordField deletePasswordField = new PasswordField();
+        Button deleteAccountSubmitButton = new Button("Delete Account");
+        Button backButton3 = new Button("Back");
+
+        backButton3.setOnAction(e -> primaryStage.setScene(homeScene));
+        deleteAccountSubmitButton.setOnAction(e -> {
+            if (deleteUser(deleteUsernameField.getText(), deletePasswordField.getText())) {
+                showAlert(AlertType.INFORMATION, "Account Deleted", "Your account has been deleted.");
+                primaryStage.setScene(homeScene);
+            } else {
+                showAlert(AlertType.ERROR, "Deletion Failed", "Invalid username or password.");
+            }
+        });
+
+        deleteAccountLayout.add(deleteAccountLabel, 0, 0);
+        deleteAccountLayout.add(deleteUsernameLabel, 0, 1);
+        deleteAccountLayout.add(deleteUsernameField, 1, 1);
+        deleteAccountLayout.add(deletePasswordLabel, 0, 2);
+        deleteAccountLayout.add(deletePasswordField, 1, 2);
+        deleteAccountLayout.add(deleteAccountSubmitButton, 1, 3);
+        deleteAccountLayout.add(backButton3, 0, 3);
+        deleteAccountScene = new Scene(deleteAccountLayout, 300, 200);
+
         primaryStage.setScene(homeScene);
         primaryStage.show();
     }
 
+    private void setupDatabase() {
+        try {
+            connection = DriverManager.getConnection("jdbc:sqlite:userDatabase.db");
+            String createTableSQL = "CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)";
+            try (PreparedStatement pstmt = connection.prepareStatement(createTableSQL)) {
+                pstmt.execute();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     private boolean createUser(String username, String password) {
-        if (userDatabase.containsKey(username)) {
+        String insertUserSQL = "INSERT INTO users(username, password) VALUES(?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(insertUserSQL)) {
+            pstmt.setString(1, username);
+            pstmt.setString(2, password);
+            pstmt.executeUpdate();
+            return true;
+        } catch (SQLException e) {
             return false;
         }
-        userDatabase.put(username, password);
-        return true;
     }
 
     private boolean validateUser(String username, String password) {
-        return userDatabase.containsKey(username) && userDatabase.get(username).equals(password);
+        String validateUserSQL = "SELECT password FROM users WHERE username = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(validateUserSQL)) {
+            pstmt.setString(1, username);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next() && rs.getString("password").equals(password)) {
+                return true;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    private boolean deleteUser(String username, String password) {
+        if (validateUser(username, password)) {
+            String deleteUserSQL = "DELETE FROM users WHERE username = ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(deleteUserSQL)) {
+                pstmt.setString(1, username);
+                pstmt.executeUpdate();
+                return true;
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+        return false;
     }
 
     private void showAlert(AlertType alertType, String title, String message) {
@@ -133,3 +211,4 @@ public class HelloApplication extends Application {
         launch(args);
     }
 }
+
